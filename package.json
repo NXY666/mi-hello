@@ -1,0 +1,20 @@
+{
+  "name": "@greatnxy/mi-hello",
+  "version": "1.0.0",
+  "description": "",
+  "main": "hello.js",
+  "type": "module",
+  "bin": {
+    "mi-hello": "hello.js"
+  },
+  "scripts": {
+    "server": "node hello.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "GreatNXY",
+  "license": "MIT",
+  "dependencies": {
+    "@greatnxy/mi-service": "^1.0.0",
+    "axios": "^1.6.7"
+  }
+}
