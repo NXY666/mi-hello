@@ -19,13 +19,6 @@ class MiHello {
 		this.hardware = hardware;
 		this.localServer = localServer;
 
-		const token = this.miTokenStore.loadToken();
-		this.cookie = {
-			deviceId: deviceId,
-			serviceToken: token.micoapi[1],
-			userId: token.userId
-		};
-
 		this.status = null;
 		this.conversation = null;
 
@@ -35,7 +28,14 @@ class MiHello {
 	async login(miUser, miPass) {
 		this.miAccount = new MiAccount(this.session, miUser, miPass, this.miTokenStore);
 		await this.miAccount.login("micoapi");
-		this.minaService = new MiNAService(this.miAccount)
+		this.minaService = new MiNAService(this.miAccount);
+
+		const token = this.miTokenStore.loadToken();
+		this.cookie = {
+			deviceId: this.deviceId,
+			serviceToken: token.micoapi[1],
+			userId: token.userId
+		};
 	}
 
 	async listen() {
