@@ -1,6 +1,6 @@
 {
   "name": "@greatnxy/mi-hello",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "",
   "main": "hello.js",
   "type": "module",
@@ -14,7 +14,7 @@
   "author": "GreatNXY",
   "license": "MIT",
   "dependencies": {
-    "@greatnxy/mi-service": "^1.0.0",
+    "@greatnxy/mi-service": "^1.0.1",
     "axios": "^1.6.7"
   }
 }
