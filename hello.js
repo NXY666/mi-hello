@@ -33,7 +33,7 @@ class MiHello {
 		const token = this.miTokenStore.loadToken();
 		this.cookie = {
 			deviceId: this.deviceId,
-			serviceToken: token.micoapi[1],
+			serviceToken: token["micoapi"][1],
 			userId: token.userId
 		};
 	}
@@ -156,13 +156,25 @@ class MiHello {
 // 读取变量
 const argStr = process.argv[2];
 if (!argStr) {
-	throw new Error("必要参数：MI_DID;MI_HW;MI_LSVR;MI_USER;MI_PASS");
+	console.error("必要参数：MI_DID;MI_HW;MI_LSVR;MI_USER;MI_PASS");
+	process.exit(1);
 }
 let MI_DID, MI_HW, MI_LSVR, MI_USER, MI_PASS;
 argStr.split(';').forEach((item) => {
 	const [key, value] = item.split('=');
 	eval(`${key} = '${value}';`);
 });
+if (!MI_DID || !MI_HW || !MI_LSVR || !MI_USER || !MI_PASS) {
+	// 当前参数（列出所有参数）
+	console.log('MI_DID:', MI_DID);
+	console.log('MI_HW:', MI_HW);
+	console.log('MI_LSVR:', MI_LSVR);
+	console.log('MI_USER:', MI_USER);
+	console.log('MI_PASS:', MI_PASS);
+
+	console.error("必要参数：MI_DID;MI_HW;MI_LSVR;MI_USER;MI_PASS");
+	process.exit(1);
+}
 
 const miHello = new MiHello(MI_DID, MI_HW, MI_LSVR);
 miHello.login(MI_USER, MI_PASS).then(() => miHello.listen());
