@@ -80,6 +80,9 @@ class MiHello {
 					warnings["play_local_music"] = 0;
 				}
 				setTimeout(() => statusListener(), 1000);
+			}).catch(e => {
+				console.error("状态守护异常：", e.message);
+				setTimeout(() => statusListener(), 3000);
 			});
 		};
 		await statusListener();
@@ -162,7 +165,7 @@ if (!argStr) {
 let MI_DID, MI_HW, MI_LSVR, MI_USER, MI_PASS;
 argStr.split(';').forEach((item) => {
 	const [key, value] = item.split('=');
-	eval(`${key} = '${value}';`);
+	eval(`${key} = ${value};`);
 });
 if (!MI_DID || !MI_HW || !MI_LSVR || !MI_USER || !MI_PASS) {
 	// 当前参数（列出所有参数）
