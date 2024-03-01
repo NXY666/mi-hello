@@ -51,8 +51,9 @@ class MiHello {
 				} else if (this.conversation.nextEndTime !== data.nextEndTime) {
 					console.log("对话:", data.records[0].query);
 					this.conversation = data;
-					this.flag = 'idle';
-					await this.onConversation(data.records[0]);
+					if (!await this.onConversation(data.records[0])) {
+						this.flag = 'idle';
+					}
 				}
 
 				setTimeout(() => conversationListener(), 1000 - data.rateLimit * 30);
@@ -70,7 +71,7 @@ class MiHello {
 		const statusListener = async () => {
 			this.getPlayStatus().then(async status => {
 				// 获取最近一条Conversation
-				if (this.flag === 'play_local_music' && (status.play_song_detail || status.status !== 1)) {
+				if (this.flag === 'play_local_music' && (status.play_song_detail || (status.status !== 1 && status.status !== 0))) {
 					if (warnings["play_local_music"]++ > 5) {
 						console.warn("[守护]", "播放本地音乐");
 						await this.shutup();
@@ -122,37 +123,69 @@ class MiHello {
 			await this.shutup();
 			await this.talk("好的。");
 			await this.minaService.playByUrl(this.deviceId, `http://${this.localServer}/random.m3u8`);
+			return true;
+		} else if (record.query.match(/^(播放|播|放).+$/i)) {
+			if (this.flag === 'play_local_music') {
+				await this.shutup();
+				await this.talk("不许打断我播放本地音乐。");
+				await this.minaService.playByUrl(this.deviceId, `http://${this.localServer}/random.m3u8`);
+				return true;
+			}
+		} else if (record.query.match(/^(([放播换]?下|换)一?[首曲]|切歌)$/i)) {
+			if (this.flag === 'play_local_music') {
+				console.log("[操作]", "播放下一首本地音乐");
+				await this.shutup();
+				await this.talk("好的。");
+				await this.minaService.playByUrl(this.deviceId, `http://${this.localServer}/random.m3u8`);
+				return true;
+			}
+		} else if (record.query.match(/^((暂停|停止?|别)([唱放播]|播放)?(音乐|歌曲?)?了?|[闭住][口嘴]|再见|拜|退下)+$/i)) {
+			if (this.flag === 'play_local_music') {
+				console.log("[操作]", "停止播放");
+				// 如果回答没有非TTS类型的回答，那么等待播放结束
+				if (!record.answers.some(answer => answer.type !== "TTS")) {
+					await this.waitUntilStop();
+				} else {
+					await this.shutup();
+				}
+				this.flag = 'idle';
+				return true;
+			}
+		} else {
+			// 中途和小爱普通对话
+			if (this.flag === 'play_local_music') {
+				// 如果回答没有非TTS类型的回答，那么等待播放结束
+				if (!record.answers.some(answer => answer.type !== "TTS")) {
+					await this.waitUntilStop();
+				}
+				await this.minaService.playByUrl(this.deviceId, `http://${this.localServer}/random.m3u8`);
+				return true;
+			}
 		}
+		return false;
+	}
+
+	async waitUntilStop() {
+		return await new Promise((resolve) => {
+			const check = async () => {
+				const status = await this.getPlayStatus();
+				if (status.status === 3) {
+					resolve();
+				} else {
+					setTimeout(() => check(), 100);
+				}
+			};
+			check();
+		});
 	}
 
 	async talk(text) {
 		await this.minaService.textToSpeech(this.deviceId, text);
-		return await new Promise((resolve) => {
-			const check = async () => {
-				const status = await this.getPlayStatus();
-				if (status !== 1) {
-					resolve();
-				} else {
-					setTimeout(() => check(), 100);
-				}
-			};
-			check();
-		});
+		return await this.waitUntilStop();
 	}
 
 	async shutup() {
 		await this.minaService.playerPause(this.deviceId);
-		return await new Promise((resolve) => {
-			const check = async () => {
-				const status = await this.getPlayStatus();
-				if (status !== 1) {
-					resolve();
-				} else {
-					setTimeout(() => check(), 100);
-				}
-			};
-			check();
-		});
 	}
 }
 
