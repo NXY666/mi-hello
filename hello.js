@@ -116,7 +116,7 @@ class MiHello {
 
 	async onConversation(record) {
 		record.query = record.query.replaceAll(/\s/g, "");
-		if (record.query.match(/^(播放|播|放|听)本地的?(音乐|歌曲?|文件|[mn]p3)$/i)) {
+		if (record.query.match(/^(播放|播|放|听)本地的?(音乐|歌([曲单])?|文件|[mn]p3)$/i)) {
 			console.log("[操作]", "播放本地音乐");
 			this.flag = 'play_local_music';
 			await this.shutup();
