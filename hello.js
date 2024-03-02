@@ -126,6 +126,7 @@ class MiHello {
 			return true;
 		} else if (record.query.match(/^(播放|播|放).+$/i)) {
 			if (this.flag === 'play_local_music') {
+				console.log("[操作]", "阻止打断播放本地音乐");
 				await this.shutup();
 				await this.talk("不许打断我播放本地音乐。");
 				await this.minaService.playByUrl(this.deviceId, `http://${this.localServer}/random.m3u8`);
@@ -154,6 +155,7 @@ class MiHello {
 		} else {
 			// 中途和小爱普通对话
 			if (this.flag === 'play_local_music') {
+				console.log("[操作]", "对话后继续播放本地音乐");
 				// 如果回答没有非TTS类型的回答，那么等待播放结束
 				if (!record.answers.some(answer => answer.type !== "TTS")) {
 					await this.waitUntilStop();
