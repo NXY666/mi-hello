@@ -10,7 +10,10 @@ const LATEST_ASK_API = "https://userprofile.mina.mi.com/device_profile/v2/conver
 
 class MiHello {
 	constructor(deviceId, hardware, localServer) {
-		this.session = axios.create();
+		this.session = axios.create({
+			timeout: 1500
+		});
+
 		this.miTokenStore = new MiTokenStore(path.join(os.homedir(), '.mi.token'));
 		this.miAccount = null;
 		this.minaService = null;
@@ -21,6 +24,7 @@ class MiHello {
 
 		this.status = null;
 		this.conversation = null;
+		this.lastRecord = null;
 
 		this.flag = 'idle';
 	}
@@ -48,12 +52,19 @@ class MiHello {
 					console.info("已启用对话监听，现在可以开始对话了。");
 					this.flag = 'idle';
 					this.conversation = data;
+					this.lastRecord = data.records[0];
 				} else if (this.conversation.nextEndTime !== data.nextEndTime) {
-					console.log("对话:", data.records[0].query);
-					this.conversation = data;
-					if (!await this.onConversation(data.records[0])) {
-						this.flag = 'idle';
+					data.records.reverse();
+					for (const record of data.records) {
+						if (record.time > this.lastRecord.time) {
+							console.log("对话:", record.query);
+							if (!await this.onConversation(record)) {
+								this.flag = 'idle';
+							}
+							this.lastRecord = record;
+						}
 					}
+					this.conversation = data;
 				}
 
 				setTimeout(() => conversationListener(), 1000 - data.rateLimit * 30);
@@ -68,23 +79,39 @@ class MiHello {
 		const warnings = {
 			"play_local_music": 0
 		};
+
+		// 守护状态白名单
+		const protectWhitelist = ['play_local_music'];
 		const statusListener = async () => {
-			this.getPlayStatus().then(async status => {
-				// 获取最近一条Conversation
-				if (this.flag === 'play_local_music' && (status.play_song_detail || (status.status !== 1 && status.status !== 0))) {
-					if (warnings["play_local_music"]++ > 5) {
-						console.warn("[守护]", "播放本地音乐");
-						await this.shutup();
-						await this.minaService.playByUrl(this.deviceId, `http://${this.localServer}/random.m3u8`);
+			if (protectWhitelist.includes(this.flag)) {
+				this.getPlayStatus().then(async status => {
+					// 获取最近一条Conversation
+					switch (this.flag) {
+						case 'play_local_music': {
+							if (status.play_song_detail || (status.status !== 1 && status.status !== 0)) {
+								if (warnings["play_local_music"]++ > 5) {
+									console.warn("[守护]", "播放本地音乐");
+									await this.shutup();
+									await this.minaService.playByUrl(this.deviceId, `http://${this.localServer}/random.m3u8`);
+								} else {
+									console.warn("[守护]", `本地音乐播放异常(${status.status})`, warnings["play_local_music"]);
+								}
+							} else {
+								warnings["play_local_music"] = 0;
+							}
+							break;
+						}
 					}
-				} else {
-					warnings["play_local_music"] = 0;
-				}
+					setTimeout(() => statusListener(), 1000);
+				}).catch(e => {
+					console.error("[守护]", "获取播放状态失败：", e.message);
+					setTimeout(() => statusListener(), 3000);
+				});
+			} else {
+				// 当前状态不需要守护，只重置守护状态
+				protectWhitelist.forEach(key => warnings[key] = 0);
 				setTimeout(() => statusListener(), 1000);
-			}).catch(e => {
-				console.error("状态守护异常：", e.message);
-				setTimeout(() => statusListener(), 3000);
-			});
+			}
 		};
 		await statusListener();
 	}
@@ -117,64 +144,72 @@ class MiHello {
 
 	async onConversation(record) {
 		record.query = record.query.replaceAll(/\s/g, "");
-		if (record.query.match(/^(播放|播|放|听)本地的?(音乐|歌([曲单])?|文件|[mn]p3)$/i)) {
-			console.log("[操作]", "播放本地音乐");
-			this.flag = 'play_local_music';
-			await this.shutup();
-			await this.talk("好的。");
-			await this.minaService.playByUrl(this.deviceId, `http://${this.localServer}/random.m3u8`);
-			return true;
-		} else if (record.query.match(/^(播放|播|放).+$/i)) {
-			if (this.flag === 'play_local_music') {
-				console.log("[操作]", "阻止打断播放本地音乐");
-				await this.shutup();
-				await this.talk("不许打断我播放本地音乐。");
-				await this.minaService.playByUrl(this.deviceId, `http://${this.localServer}/random.m3u8`);
-				return true;
-			}
-		} else if (record.query.match(/^(([放播换]?下|换)一?[首曲]|切歌)$/i)) {
-			if (this.flag === 'play_local_music') {
-				console.log("[操作]", "播放下一首本地音乐");
-				await this.shutup();
-				await this.talk("好的。");
-				await this.minaService.playByUrl(this.deviceId, `http://${this.localServer}/random.m3u8`);
-				return true;
-			}
-		} else if (record.query.match(/^((暂停|停止?|别)([唱放播]|播放)?(音乐|歌曲?)?了?|[闭住][口嘴]|再见|拜|退下)+$/i)) {
-			if (this.flag === 'play_local_music') {
-				console.log("[操作]", "停止播放");
-				// 如果回答没有非TTS类型的回答，那么等待播放结束
-				if (!record.answers.some(answer => answer.type !== "TTS")) {
-					await this.waitUntilStop();
-				} else {
+		switch (this.flag) {
+			case 'idle': {
+				if (record.query.match(/^(播放|播|放|听)本地的?(音乐|歌([曲单])?|文件|[mn]p3)$/i)) {
+					console.log("[操作]", "播放本地音乐");
+					this.flag = 'play_local_music';
 					await this.shutup();
+					await this.talk("好的。");
+					await this.minaService.playByUrl(this.deviceId, `http://${this.localServer}/random.m3u8`);
+					return true;
 				}
-				this.flag = 'idle';
-				return true;
+				break;
 			}
-		} else {
-			// 中途和小爱普通对话
-			if (this.flag === 'play_local_music') {
-				console.log("[操作]", "对话后继续播放本地音乐");
-				// 如果回答没有非TTS类型的回答，那么等待播放结束
-				if (!record.answers.some(answer => answer.type !== "TTS")) {
-					await this.waitUntilStop();
+			case 'play_local_music': {
+				if (record.query.match(/^(播放|播|放).+$/i)) {
+					console.log("[操作]", "阻止打断播放本地音乐");
+					await this.shutup();
+					await this.talk("不许打断我播放本地音乐。");
+					await this.minaService.playByUrl(this.deviceId, `http://${this.localServer}/random.m3u8`);
+					return true;
+				} else if (record.query.match(/^(([放播换]?[上下]|换)一?[首曲]|[切换]歌)$/i)) {
+					console.log("[操作]", "播放下一首本地音乐");
+					await this.shutup();
+					await this.minaService.playByUrl(this.deviceId, `http://${this.localServer}/random.m3u8`);
+					return true;
+				} else if (record.query.match(/^((暂停|停止?|别)([唱放播]|播放)?(音乐|歌曲?)?了?|[闭住][口嘴]|再见|拜|退下)+$/i)) {
+					console.log("[操作]", "停止播放");
+					this.flag = 'idle';
+					// 如果回答没有非TTS类型的回答，那么等待播放结束
+					if (record.answers.length && !record.answers.some(answer => answer.type !== "TTS")) {
+						await this.waitUntilStop();
+					} else {
+						await this.shutup();
+					}
+					return true;
+				} else {
+					// 中途和小爱普通对话
+					console.log("[操作]", "对话后继续播放本地音乐");
+					// 如果回答没有非TTS类型的回答，那么等待播放结束
+					if (record.answers.length && !record.answers.some(answer => answer.type !== "TTS")) {
+						await this.waitUntilStop();
+					}
+					await this.minaService.playByUrl(this.deviceId, `http://${this.localServer}/random.m3u8`);
+					return true;
 				}
-				await this.minaService.playByUrl(this.deviceId, `http://${this.localServer}/random.m3u8`);
-				return true;
 			}
 		}
 		return false;
 	}
 
 	async waitUntilStop() {
+		let count = 0;
 		return await new Promise((resolve) => {
 			const check = async () => {
-				const status = await this.getPlayStatus();
-				if (status.status === 3) {
+				try {
+					const status = await this.getPlayStatus();
+					if (status.status === 3) {
+						resolve();
+					} else if (count++ > 600) {
+						console.trace("[疑点]", `等待播放结束超时(${status.status})`);
+						resolve();
+					} else {
+						setTimeout(() => check(), 100);
+					}
+				} catch (e) {
+					console.error("[异常]", "等待播放结束异常", e.message);
 					resolve();
-				} else {
-					setTimeout(() => check(), 100);
 				}
 			};
 			check();
