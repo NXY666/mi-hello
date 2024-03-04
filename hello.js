@@ -7,12 +7,11 @@ import {MiAccount, MiTokenStore} from "@greatnxy/mi-service/miaccount.js";
 import {MiNAService} from "@greatnxy/mi-service/minaservice.js";
 
 const LATEST_ASK_API = "https://userprofile.mina.mi.com/device_profile/v2/conversation?source=dialogu&hardware={hardware}&timestamp={timestamp}&limit=2";
+const REQUEST_TIMEOUT = 2000;
 
 class MiHello {
 	constructor(deviceId, hardware, localServer) {
-		this.session = axios.create({
-			timeout: 1500
-		});
+		this.session = axios.create({timeout: REQUEST_TIMEOUT});
 
 		this.miTokenStore = new MiTokenStore(path.join(os.homedir(), '.mi.token'));
 		this.miAccount = null;
@@ -33,13 +32,6 @@ class MiHello {
 		this.miAccount = new MiAccount(this.session, miUser, miPass, this.miTokenStore);
 		await this.miAccount.login("micoapi");
 		this.minaService = new MiNAService(this.miAccount);
-
-		const token = this.miTokenStore.loadToken();
-		this.cookie = {
-			deviceId: this.deviceId,
-			serviceToken: token["micoapi"][1],
-			userId: token.userId
-		};
 	}
 
 	async listen() {
@@ -47,7 +39,7 @@ class MiHello {
 		const conversationListener = async () => {
 			this.getConversation().then(async data => {
 				if (data === null) {
-					throw new Error("无法获取对话数据。");
+					throw new Error("获取对话信息失败。");
 				} else if (this.conversation === null) {
 					console.info("已启用对话监听，现在可以开始对话了。");
 					this.flag = 'idle';
@@ -69,7 +61,7 @@ class MiHello {
 
 				setTimeout(() => conversationListener(), 1000 - data.rateLimit * 30);
 			}).catch(e => {
-				console.error("对话监听异常：", e.message);
+				console.error("[监听]", "获取对话信息时受阻:", e);
 				setTimeout(() => conversationListener(), 3000);
 			});
 		};
@@ -104,7 +96,7 @@ class MiHello {
 					}
 					setTimeout(() => statusListener(), 1000);
 				}).catch(e => {
-					console.error("[守护]", "获取播放状态失败：", e.message);
+					console.error("[守护]", "获取播放状态时受阻:", e.message);
 					setTimeout(() => statusListener(), 3000);
 				});
 			} else {
@@ -117,11 +109,12 @@ class MiHello {
 	}
 
 	async getConversation() {
-		const response = await this.session({
-			method: 'GET',
+		const response = await this.miAccount.miRequest('micoapi', {
 			url: LATEST_ASK_API.replace('{hardware}', this.hardware).replace('{timestamp}', String(Date.now())),
-			headers: {'Cookie': Object.keys(this.cookie).map(key => `${key}=${this.cookie[key]}`).join('; ')}
-		});
+			headers: {
+				'Cookie': {deviceId: this.deviceId}
+			}
+		}, {rawReps: true});
 		const body = response.data;
 		if (body.code !== 0) {
 			throw new Error(response.message);

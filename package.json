@@ -1,6 +1,6 @@
 {
   "name": "@greatnxy/mi-hello",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "",
   "main": "hello.js",
   "type": "module",
@@ -8,13 +8,12 @@
     "mi-hello": "hello.js"
   },
   "scripts": {
-    "server": "node hello.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "mi-hello": "node hello.js"
   },
   "author": "GreatNXY",
   "license": "MIT",
   "dependencies": {
-    "@greatnxy/mi-service": "^1.0.1",
+    "@greatnxy/mi-service": "^1.0.2",
     "axios": "^1.6.7"
   }
 }
