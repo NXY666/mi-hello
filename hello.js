@@ -6,6 +6,8 @@ import path from 'path';
 import {MiAccount, MiTokenStore} from "@greatnxy/mi-service/miaccount.js";
 import {MiNAService} from "@greatnxy/mi-service/minaservice.js";
 
+import readline from "readline";
+
 const LATEST_ASK_API = "https://userprofile.mina.mi.com/device_profile/v2/conversation?source=dialogu&hardware={hardware}&timestamp={timestamp}&limit=2";
 const REQUEST_TIMEOUT = 2000;
 
@@ -222,25 +224,64 @@ class MiHello {
 // 读取变量
 const argStr = process.argv[2];
 if (!argStr) {
-	console.error("必要参数：MI_DID;MI_HW;MI_LSVR;MI_USER;MI_PASS");
+	console.error("必要参数：MI_LSVR;MI_USER;MI_PASS");
+	console.error("可选参数：MI_DID;MI_HW");
 	process.exit(1);
 }
+
 let MI_DID, MI_HW, MI_LSVR, MI_USER, MI_PASS;
 argStr.split(';').forEach((item) => {
 	const [key, value] = item.split('=');
 	eval(`${key} = ${value};`);
 });
-if (!MI_DID || !MI_HW || !MI_LSVR || !MI_USER || !MI_PASS) {
+
+if (!MI_LSVR || !MI_USER || !MI_PASS) {
 	// 当前参数（列出所有参数）
-	console.log('MI_DID:', MI_DID);
-	console.log('MI_HW:', MI_HW);
 	console.log('MI_LSVR:', MI_LSVR);
 	console.log('MI_USER:', MI_USER);
 	console.log('MI_PASS:', MI_PASS);
 
-	console.error("必要参数：MI_DID;MI_HW;MI_LSVR;MI_USER;MI_PASS");
+	console.error("必要参数：MI_LSVR;MI_USER;MI_PASS");
+	console.error("可选参数：MI_DID;MI_HW");
+
 	process.exit(1);
 }
 
-const miHello = new MiHello(MI_DID, MI_HW, MI_LSVR);
-miHello.login(MI_USER, MI_PASS).then(() => miHello.listen());
+if (!MI_DID || !MI_HW) {
+	const tmpSession = axios.create();
+	const tmpAccount = new MiAccount(tmpSession, MI_USER, MI_PASS, null);
+	const tmpNA = new MiNAService(tmpAccount);
+	await tmpNA.deviceList().then((value) => {
+		// 列出所有设备，然后让选择
+		console.log('设备列表:');
+		value.forEach((item, index) => {
+			console.log(`[${index}]`, item.name, `(型号：${item.hardware})`);
+		});
+		const rl = readline.createInterface({
+			input: process.stdin,
+			output: process.stdout
+		});
+		// 让用户选择设备
+		rl.question('请选择目标设备的序号: ', (answer) => {
+			rl.close();
+			const device = value[parseInt(answer)];
+			if (device) {
+				console.log('MI_DID:', device.deviceID);
+				console.log('MI_HW:', device.hardware);
+				MI_DID = device.deviceID;
+				MI_HW = device.hardware;
+				start();
+			} else {
+				console.error('设备序号无效。');
+				process.exit(1);
+			}
+		});
+	});
+} else {
+	start();
+}
+
+function start() {
+	const miHello = new MiHello(MI_DID, MI_HW, MI_LSVR);
+	miHello.login(MI_USER, MI_PASS).then(() => miHello.listen());
+}
