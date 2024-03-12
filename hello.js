@@ -141,29 +141,53 @@ class MiHello {
 		record.query = record.query.replaceAll(/\s/g, "");
 		switch (this.flag) {
 			case 'idle': {
-				if (record.query.match(/^(播放|播|放|听)本地的?(音乐|歌([曲单])?|文件|[mn]p3)$/i)) {
+				if (/^(?:从.+开始)?(?:播放|播|放|听)(?:音乐|歌[曲单]?|文件|[mn]p3)?$/i.test(record.query)) {
+					console.log("[操作]", "根据提示播放本地音乐");
+					this.flag = 'play_local_music';
+					await this.shutup();
+					await this.talk("好的。");
+
+					const tips = record.query.match(/^(?:从(?<tips>.+)开始)?(?:播放|播|放|听)(?:音乐|歌[曲单]?|文件|[mn]p3)?$/i).groups.tips;
+					const urlObj = new URL(`http://${this.localServer}/random.m3u8`);
+					urlObj.searchParams.append('tips', tips);
+					urlObj.searchParams.append('tip_limit', '100');
+					urlObj.searchParams.append('list', '100');
+					await this.minaService.playByUrl(this.deviceId, urlObj.href);
+					return true;
+				} else if (/^(?:播放|播|放|听)本地的?(?:音乐|歌[曲单]?|文件|[mn]p3)$/i.test(record.query)) {
 					console.log("[操作]", "播放本地音乐");
 					this.flag = 'play_local_music';
 					await this.shutup();
 					await this.talk("好的。");
-					await this.minaService.playByUrl(this.deviceId, `http://${this.localServer}/random.m3u8`);
+
+					const urlObj = new URL(`http://${this.localServer}/random.m3u8`);
+					urlObj.searchParams.append('list', '100');
+					await this.minaService.playByUrl(this.deviceId, urlObj.href);
 					return true;
 				}
 				break;
 			}
 			case 'play_local_music': {
-				if (record.query.match(/^(播放|播|放).+$/i)) {
+				if (/^(?:播放|播|放).+$/i.test(record.query)) {
 					console.log("[操作]", "阻止打断播放本地音乐");
 					await this.shutup();
 					await this.talk("不许打断我播放本地音乐。");
 					await this.minaService.playByUrl(this.deviceId, `http://${this.localServer}/random.m3u8`);
 					return true;
-				} else if (record.query.match(/^(([放播换]?[上下]|换)一?[首曲]|[切换]歌)$/i)) {
+				} else if (/^(?:[放播换]?[上下]|换)一?[首曲|[切换]歌]$/i.test(record.query)) {
 					console.log("[操作]", "播放下一首本地音乐");
 					await this.shutup();
 					await this.minaService.playByUrl(this.deviceId, `http://${this.localServer}/random.m3u8`);
 					return true;
-				} else if (record.query.match(/^((暂停|停止?|别)([唱放播]|播放)?(音乐|歌曲?)?了?|[闭住][口嘴]|再见|拜|退下)+$/i)) {
+				} else if (/^[换切][成为到]?(?<tips>.+)$/.test(record.query)) {
+					const tips = record.query.match(/^[换切][成为到]?(?<tips>.+)$/).groups.tips;
+					const urlObj = new URL(`http://${this.localServer}/random.m3u8`);
+					urlObj.searchParams.append('tips', tips);
+					urlObj.searchParams.append('tip_limit', '1');
+					await this.shutup();
+					await this.minaService.playByUrl(this.deviceId, urlObj.href);
+					return true;
+				} else if (/^(?:(?:暂停|停止?|别)(?:[唱放播]|播放)?(?:音乐|歌曲?)?了?|[闭住][口嘴]|再见|拜|退下)+$/i.test(record.query)) {
 					console.log("[操作]", "停止播放");
 					this.flag = 'idle';
 					// 如果回答没有非TTS类型的回答，那么等待播放结束
